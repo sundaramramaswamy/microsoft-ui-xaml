@@ -352,19 +352,101 @@ axis only, set the brush property on that axis instead.
 
 ## Accessibility
 
-`Chart` does not create a chart-specific automation peer. The plotted series, axes, legend, and
-data labels are not exposed as individual automation elements. Provide an accessible summary on
-the control and expose the underlying data elsewhere in the page when users must inspect exact
-values.
+`Chart` creates a `ChartAutomationPeer` that connects the control and its parts to UI Automation
+(UIA). A screen reader can navigate the series, data points, axes, legend, and data labels without
+the application building a separate automation tree.
+
+### Automation structure and patterns
+
+The Raw view preserves the chart engine's complete accessibility tree, including presentation
+nodes. Filtering ordinary screen-reader traversal uses `IsControlElement` and `IsContentElement`,
+not removal from the Raw tree. The final Control and Content view policy remains open.
+
+| Part | Information exposed | UIA pattern |
+|------|---------------------|-------------|
+| Chart | Chart kind, accessible name, and description. | No Value pattern. |
+| Series | Series title and its data points. | None. |
+| Data point | Category or position, labeled value, and position within its series. | Read-only Value. |
+| Axis | Axis title and tick-label children. | None on the axis; read-only Value on text parts. |
+| Legend | Legend title and entries identifying the series. | None on containers; read-only Value on text parts. |
+| Data label | Label text, including per-point overrides. | Read-only Value. |
+
+The chart and its parts use the Custom control type; `LocalizedControlType` distinguishes their
+roles. A point's `PositionInSet` and `SizeOfSet` describe its position among that series' plotted
+points, in navigation order, rather than adding an English "N of M" suffix to its name.
+
+The Value pattern reports `IsReadOnly` as true. UIA cannot edit chart data or text: `SetValue`
+returns `UIA_E_INVALIDOPERATION`, or `UIA_E_ELEMENTNOTENABLED` when the chart is disabled.
+Parts inherit the chart's enabled state. Their bounding rectangles follow the chart's transforms;
+`IsOffscreen` accounts for visibility, scrolling, and clipping.
+
+### Accessible names and descriptions
+
+Application-provided text takes precedence over generated text. A non-empty
+`AutomationProperties.Name` wins; otherwise `LabeledBy` can supply the name from a visible
+heading. A non-empty `AutomationProperties.FullDescription` is preserved. If either standard
+naming or the description yields empty text, that text falls back independently to generated
+chart text.
+
+Give each chart a meaningful name and use the description for an application-specific explanation:
 
 ```xaml
 <charts:Chart
-    AutomationProperties.Name="Monthly revenue chart"
-    AutomationProperties.HelpText="Revenue rose from 18 in January to 52 in June." />
+    AutomationProperties.Name="Monthly revenue"
+    AutomationProperties.FullDescription="Revenue rose from 18 in January to 52 in June." />
 ```
 
-The control has no chart-specific keyboard interaction. Do not rely on color alone to distinguish
-series; combine color with titles, dash styles, marker shapes, or adjacent text.
+`CartesianSeries.Title` and `Axis.Label` supply series and axis text; a value-axis label also
+identifies the dimension in a point's value. The generated chart text uses the visible series and
+axes. Its final wording and division between Name and FullDescription remain open.
+
+### Data changes
+
+Accessible values follow the plotted data. A value-only change that preserves the tree is visible
+on the next UIA read. Structural or layout changes that invalidate part identities expire the
+retained providers; subsequent reads of those parts report `UIA_E_ELEMENTNOTAVAILABLE` rather
+than silently describing another datum. Clients must traverse the chart again to obtain the
+current elements. Teardown also invalidates retained providers.
+
+This read behavior does not provide change announcements. The notification and reader-position
+policy remains open.
+
+### Presentation and language
+
+Do not rely on color alone to distinguish series; combine color with titles, dash styles, marker
+shapes, or adjacent text. Brush and palette fallbacks follow
+[How to theme a chart](#how-to-theme-a-chart); the high-contrast defaults remain open.
+
+Localize application-provided names, descriptions, series titles, and axis labels. Generated
+accessibility text must use resource-backed strings and language-appropriate number, plural, and
+list formatting. This includes chart summaries, part roles, generated series titles, and value
+dimension labels.
+
+### Implementation status and open questions
+
+The experimental implementation has the following limits. They do not settle the design questions
+below.
+
+| Area | Current implementation limit |
+|------|------------------------------|
+| Keyboard and hit testing | Chart parts cannot take keyboard focus; chart-part hit testing is not implemented. |
+| Updates | Chart-data changes do not raise structure-changed, property-changed, or notification events. Clients observe updated data by reading again. |
+| Dates | Points on date axes are named by their data index, not their date. |
+| Localization | Generated names, descriptions, and roles are English; point and range numbers use the engine's default US English locale. |
+| Text size | Chart text does not yet follow the Windows text-size setting. |
+
+The following questions need accessibility review before the corresponding contract is finalized:
+
+| Area | Open question |
+|------|---------------|
+| Generated text | Which information belongs in Name or FullDescription? Should the description include point counts and untitled axis ranges, and should point names repeat their Value? |
+| Date points | How is each point's date exposed, and which date format and language are used? |
+| Views and labels | Which tick labels, markers, legend entries, data labels, and titles belong in the Control and Content views? How is an override label associated with its point? |
+| Keyboard | What are the chart's keyboard entry, movement, and exit behaviors? Which parts can take focus, and what hit-testing behavior is required? |
+| Updates | Which changes are announced, how are frequent updates coalesced, and how is the reader's place preserved when the tree changes? |
+| High contrast | How are series and automatic axes presented in contrast themes, and which non-color distinctions are supplied by default rather than by the application? |
+| Text size | How do ticks, titles, legends, and data labels resize and remain usable when text is enlarged or chart space is limited? |
+| Right-to-left | What are the visual and accessible reading orders for a right-to-left chart, including text and point navigation? |
 
 # Examples
 
@@ -662,6 +744,8 @@ enforce are:
 A chart draws through the GPU. If the graphics device is lost, the chart's presentation is
 detached and re-established; the model and the property values you set are not rebuilt.
 
+For the chart's UI Automation behavior, see [Accessibility](#accessibility).
+
 ## Chart.Data property
 
 Gets the collection of data-sample objects retained by the chart for use by its series.
@@ -763,6 +847,27 @@ legend without a heading. Setting `LegendTitle` has no visible effect while `Sho
 | `Chart()`             | Initializes a new instance of the Chart class.          |
 | `ShowLegendProperty`  | Identifies the ShowLegend dependency property.          |
 | `LegendTitleProperty` | Identifies the LegendTitle dependency property.         |
+
+## ChartAutomationPeer class
+
+Exposes a `Chart` to Microsoft UI Automation.
+
+```csharp
+public class ChartAutomationPeer : FrameworkElementAutomationPeer
+{
+    public ChartAutomationPeer(Chart owner);
+}
+```
+
+`Chart` creates this peer automatically. A control derived from `Chart` can derive from
+`ChartAutomationPeer` to extend its automation behavior. Chart parts are exposed as UIA elements,
+not as separate XAML controls or public peer types. See [Accessibility](#accessibility).
+
+## Other ChartAutomationPeer members
+
+| Name                         | Description                                                    |
+|------------------------------|----------------------------------------------------------------|
+| `ChartAutomationPeer(Chart)` | Initializes a peer for the specified Chart.                     |
 
 ## Samples class
 
@@ -2042,6 +2147,15 @@ namespace Microsoft.UI.Xaml.Controls.Charts
         static Microsoft.UI.Xaml.DependencyProperty ShowLegendProperty{ get; };
         /// Identifies the LegendTitle dependency property.
         static Microsoft.UI.Xaml.DependencyProperty LegendTitleProperty{ get; };
+    }
+
+    /// Exposes a Chart to Microsoft UI Automation.
+    [contract(WinUIChartingContract, 3)]
+    [webhosthidden]
+    unsealed runtimeclass ChartAutomationPeer : Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+    {
+        /// Initializes a new instance of the ChartAutomationPeer class.
+        ChartAutomationPeer(Chart owner);
     }
 
     /// Provides the common data, axis, stroke, label, and marker properties for Cartesian series.
