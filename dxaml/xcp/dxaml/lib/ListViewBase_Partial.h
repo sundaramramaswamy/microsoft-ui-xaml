@@ -753,6 +753,13 @@ namespace DirectUI
                 _Out_ BOOLEAN* returnValue) override;
 
         private:
+            // Gets the PreviousItemStates and NextItemStates visual state names of the item at index.
+            // Both are null when the index is unknown to the panel.
+            _Check_return_ HRESULT GetNeighborStates(
+                _In_ int index,
+                _Outptr_result_maybenull_z_ const wchar_t** previousState,
+                _Outptr_result_maybenull_z_ const wchar_t** nextState);
+
             // Handles changes to the SelectionMode property.
             // TODO: Make this a protected virtual method?
             _Check_return_ HRESULT OnSelectionModeChanged(

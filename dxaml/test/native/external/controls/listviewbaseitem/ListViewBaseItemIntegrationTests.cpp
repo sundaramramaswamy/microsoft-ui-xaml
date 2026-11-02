@@ -2570,4 +2570,176 @@ namespace Microsoft { namespace UI { namespace Xaml { namespace Tests { namespac
         return buffer;
     }
 
+    static xaml_controls::ListView^ CreateListViewWithNeighborStates(Platform::Object^ itemsSource)
+    {
+        auto list = safe_cast<xaml_controls::ListView^>(xaml_markup::XamlReader::Load(
+            LR"(<ListView xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                    xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+                    SelectionMode='Multiple' Width='200' Height='400' VerticalAlignment='Top'>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType='ListViewItem'>
+                        <Setter Property='Template'>
+                            <Setter.Value>
+                                <ControlTemplate TargetType='ListViewItem'>
+                                    <Border Height='20'>
+                                        <VisualStateManager.VisualStateGroups>
+                                            <VisualStateGroup x:Name='PreviousItemStates'>
+                                                <VisualState x:Name='NoPreviousItem'/>
+                                                <VisualState x:Name='PreviousUnselectedSameGroup'/>
+                                                <VisualState x:Name='PreviousUnselectedOtherGroup'/>
+                                                <VisualState x:Name='PreviousSelectedSameGroup'/>
+                                                <VisualState x:Name='PreviousSelectedOtherGroup'/>
+                                            </VisualStateGroup>
+                                            <VisualStateGroup x:Name='NextItemStates'>
+                                                <VisualState x:Name='NoNextItem'/>
+                                                <VisualState x:Name='NextUnselectedSameGroup'/>
+                                                <VisualState x:Name='NextUnselectedOtherGroup'/>
+                                                <VisualState x:Name='NextSelectedSameGroup'/>
+                                                <VisualState x:Name='NextSelectedOtherGroup'/>
+                                            </VisualStateGroup>
+                                        </VisualStateManager.VisualStateGroups>
+                                        <ContentPresenter/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>)"));
+
+        list->ItemsSource = itemsSource;
+        TestServices::WindowHelper->WindowContent = list;
+        return list;
+    }
+
+    static void VerifyItemNeighborStates(xaml_controls::ListViewBase^ list, int index, const wchar_t* previousState, const wchar_t* nextState)
+    {
+        LOG_OUTPUT(L"Item %d: expecting %s, %s.", index, previousState, nextState);
+
+        auto item = safe_cast<xaml::FrameworkElement^>(list->ContainerFromIndex(index));
+        auto root = safe_cast<xaml::FrameworkElement^>(xaml_media::VisualTreeHelper::GetChild(item, 0));
+        auto groups = VisualStateManager::GetVisualStateGroups(root);
+
+        VERIFY_ARE_EQUAL(Platform::StringReference(previousState), groups->GetAt(0)->CurrentState->Name);
+        VERIFY_ARE_EQUAL(Platform::StringReference(nextState), groups->GetAt(1)->CurrentState->Name);
+    }
+
+    void IntegrationTests::VerifyNeighborStates()
+    {
+        TestCleanupWrapper cleanup;
+        xaml_controls::ListView^ list = nullptr;
+        Platform::Collections::Vector<Platform::String^>^ items = nullptr;
+
+        RunOnUIThread([&]()
+        {
+            items = ref new Platform::Collections::Vector<Platform::String^>({ L"0", L"1", L"2", L"3", L"4" });
+            list = CreateListViewWithNeighborStates(items);
+            list->SelectedItems->Append(items->GetAt(1));
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Preset selection of item 1.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 0, L"NoPreviousItem", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousSelectedSameGroup", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 4, L"PreviousUnselectedSameGroup", L"NoNextItem");
+
+            list->SelectRange(ref new xaml_data::ItemIndexRange(2, 2));
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Range selection of items 2-3 joins item 1.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousSelectedSameGroup", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 4, L"PreviousSelectedSameGroup", L"NoNextItem");
+
+            list->DeselectRange(ref new xaml_data::ItemIndexRange(2, 1));
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Deselecting item 2 splits the selection.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 3, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+
+            items->RemoveAt(2);
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Removing item 2 makes items 1 and 3 adjacent.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousSelectedSameGroup", L"NextUnselectedSameGroup");
+
+            items->InsertAt(2, L"new");
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Inserting an unselected item between them separates them again.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousSelectedSameGroup", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 3, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+
+            list->SelectionMode = xaml_controls::ListViewSelectionMode::None;
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"SelectionMode None shows every neighbor as unselected.");
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 0, L"NoPreviousItem", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousUnselectedSameGroup", L"NextUnselectedSameGroup");
+        });
+    }
+
+    void IntegrationTests::VerifyNeighborStatesWithGroups()
+    {
+        TestCleanupWrapper cleanup;
+        xaml_controls::ListView^ list = nullptr;
+
+        RunOnUIThread([&]()
+        {
+            // Groups [0, 1], [], [2]; the empty group's header is hidden.
+            auto groups = ref new Platform::Collections::Vector<Platform::Object^>();
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>({ L"0", L"1" }));
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>());
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>({ L"2" }));
+
+            auto cvs = ref new xaml_data::CollectionViewSource();
+            cvs->IsSourceGrouped = true;
+            cvs->Source = groups;
+
+            list = CreateListViewWithNeighborStates(cvs->View);
+            auto groupStyle = ref new xaml_controls::GroupStyle();
+            groupStyle->HidesIfEmpty = true;
+            list->GroupStyle->Append(groupStyle);
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 0, L"NoPreviousItem", L"NextUnselectedSameGroup");
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextUnselectedOtherGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousUnselectedOtherGroup", L"NoNextItem");
+
+            list->SelectRange(ref new xaml_data::ItemIndexRange(1, 2));
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        RunOnUIThread([&]()
+        {
+            VerifyItemNeighborStates(list, 0, L"NoPreviousItem", L"NextSelectedSameGroup");
+            VerifyItemNeighborStates(list, 1, L"PreviousUnselectedSameGroup", L"NextSelectedOtherGroup");
+            VerifyItemNeighborStates(list, 2, L"PreviousSelectedOtherGroup", L"NoNextItem");
+        });
+    }
+
 } } } } } } // Microsoft::UI::Xaml::Tests::Controls::ListViewBaseItem

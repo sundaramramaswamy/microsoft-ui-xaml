@@ -3829,6 +3829,44 @@ Cleanup:
     return hr;
 }
 
+_Check_return_ HRESULT ModernCollectionBasePanel::GetItemGroupBounds(
+    _In_ INT32 itemIndex,
+    _Out_ INT32* pFirst,
+    _Out_ INT32* pLast,
+    _Out_ INT32* pItemCount) const
+{
+    *pFirst = -1;
+    *pLast = -1;
+
+    // The item count is 0 while the metrics aren't cached.
+    const INT32 itemCount = m_cacheManager.GetTotalItemCount();
+    *pItemCount = itemCount;
+    if (itemIndex < 0 || itemIndex >= itemCount)
+    {
+        return S_OK;
+    }
+
+    if (m_cacheManager.IsGrouping())
+    {
+        INT32 indexInsideGroup = -1;
+        INT32 itemCountInGroup = -1;
+
+        IFC_RETURN(m_cacheManager.GetGroupInformationFromItemIndex(itemIndex, nullptr, &indexInsideGroup, &itemCountInGroup));
+        if (indexInsideGroup >= 0)
+        {
+            *pFirst = itemIndex - indexInsideGroup;
+            *pLast = *pFirst + itemCountInGroup - 1;
+        }
+    }
+    else
+    {
+        *pFirst = 0;
+        *pLast = itemCount - 1;
+    }
+
+    return S_OK;
+}
+
 _Check_return_ HRESULT ModernCollectionBasePanel::OnPropertyChanged2(_In_ const PropertyChangedParams& args)
 {
     IFC_RETURN(ModernCollectionBasePanelGenerated::OnPropertyChanged2(args));

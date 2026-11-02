@@ -474,6 +474,10 @@ namespace DirectUI
                 // to snap directly to the new visual state.
                 _In_ bool bUseTransitions);
 
+            _Check_return_ HRESULT ChangeNeighborVisualStates(
+                _In_ VisualStateManagerBatchContext *pContext,
+                _In_ bool bUseTransitions);
+
             _Check_return_ HRESULT SetUpAutomaticDragTrigger(
                 _In_ xaml_input::IPointerRoutedEventArgs* pArgs);
 

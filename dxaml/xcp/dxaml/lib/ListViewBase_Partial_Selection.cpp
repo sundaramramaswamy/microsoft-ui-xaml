@@ -7,6 +7,7 @@
 #include "ListViewBaseItem.g.h"
 #include "ItemCollection.g.h"
 #include "ItemIndexRange.g.h"
+#include "ModernCollectionBasePanel.g.h"
 #include <OptionalChangeState.h>
 
 using namespace DirectUI;
@@ -169,6 +170,69 @@ Cleanup:
     RRETURN(hr);
 }
 
+_Check_return_ HRESULT ListViewBase::GetNeighborStates(
+    _In_ int index,
+    _Outptr_result_maybenull_z_ const wchar_t** previousState,
+    _Outptr_result_maybenull_z_ const wchar_t** nextState)
+{
+    // Indexed by [isSelected][isSameGroup].
+    static constexpr const wchar_t* previousStates[2][2] = {
+        { L"PreviousUnselectedOtherGroup", L"PreviousUnselectedSameGroup" },
+        { L"PreviousSelectedOtherGroup", L"PreviousSelectedSameGroup" } };
+    static constexpr const wchar_t* nextStates[2][2] = {
+        { L"NextUnselectedOtherGroup", L"NextUnselectedSameGroup" },
+        { L"NextSelectedOtherGroup", L"NextSelectedSameGroup" } };
+
+    *previousState = nullptr;
+    *nextState = nullptr;
+
+    ctl::ComPtr<IPanel> panel;
+    IFC_RETURN(get_ItemsPanelRoot(&panel));
+    const auto modernPanel = panel.AsOrNull<IModernCollectionBasePanel>();
+    if (!modernPanel)
+    {
+        return S_OK;
+    }
+
+    int firstInGroup = -1;
+    int lastInGroup = -1;
+    int itemCount = 0;
+    IFC_RETURN(modernPanel.Cast<ModernCollectionBasePanel>()->GetItemGroupBounds(index, &firstInGroup, &lastInGroup, &itemCount));
+    if (firstInGroup < 0)
+    {
+        return S_OK;
+    }
+
+    xaml_controls::ListViewSelectionMode selectionMode = xaml_controls::ListViewSelectionMode_None;
+    IFC_RETURN(get_SelectionMode(&selectionMode));
+
+    const auto neighborState = [&](int neighbor, bool isSameGroup, const wchar_t* const (&states)[2][2], const wchar_t** state)
+    {
+        bool isSelected = false;
+        // Items appear unselected when the ListView's selection mode is None.
+        if (selectionMode != xaml_controls::ListViewSelectionMode_None)
+        {
+            IFC_RETURN(IsIndexSelected(neighbor, &isSelected));
+        }
+        *state = states[isSelected][isSameGroup];
+        return S_OK;
+    };
+
+    *previousState = L"NoPreviousItem";
+    if (index > 0)
+    {
+        IFC_RETURN(neighborState(index - 1, index > firstInGroup, previousStates, previousState));
+    }
+
+    *nextState = L"NoNextItem";
+    if (index + 1 < itemCount)
+    {
+        IFC_RETURN(neighborState(index + 1, index < lastInGroup, nextStates, nextState));
+    }
+
+    return S_OK;
+}
+
 // Handles changes to the Items collection.  We should adjust m_pAnchorIndex if
 // any item before that index was added or removed. Additionally, we should
 // cancel a drag/drop if the item we're dragging is removed, and we should cancel
@@ -197,12 +261,12 @@ _Check_return_ HRESULT ListViewBase::OnItemsChanged(
         }
         case wfc::CollectionChange_ItemInserted:
         {
+            IFC(pArgs->get_Index(&index));
+
             // If an item was inserted before the anchored item, move the anchor
             // index forward an element
             if (m_pAnchorIndex != NULL)
             {
-                IFC(pArgs->get_Index(&index));
-
                 if (index <= *m_pAnchorIndex)
                 {
                     (*m_pAnchorIndex)++;
@@ -252,6 +316,13 @@ _Check_return_ HRESULT ListViewBase::OnItemsChanged(
             shouldConsiderDragItemIndexForCancelDrag = TRUE;
             break;
         }
+    }
+
+    if (action == wfc::CollectionChange_ItemInserted || action == wfc::CollectionChange_ItemRemoved)
+    {
+        // The items around an insertion or removal have a new neighbor.
+        const int changedIndex = static_cast<int>(index);
+        IFC(UpdateVisibleAndCachedItemsSelectionAndVisualState(false /* updateIsSelected */, changedIndex - 1, changedIndex + 1));
     }
 
     if (allowCancelDrag)

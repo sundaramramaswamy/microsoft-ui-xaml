@@ -1546,6 +1546,10 @@ namespace DirectUI
         _Check_return_ HRESULT GetGroupInformationFromItemIndex(_In_ INT32 itemIndex, _Out_opt_ INT32 *pIndexOfGroup, _Out_opt_ INT32 *pIndexInsideGroup, _Out_opt_ INT32 *pItemCountInGroup) const
             { RRETURN(m_cacheManager.GetGroupInformationFromItemIndex(itemIndex, pIndexOfGroup, pIndexInsideGroup, pItemCountInGroup)); }
 
+        // Gets the first and last item indexes of the group containing itemIndex (the whole list when not grouping),
+        // and the total item count. First and last are -1 when itemIndex is outside the cached items.
+        _Check_return_ HRESULT GetItemGroupBounds(_In_ INT32 itemIndex, _Out_ INT32* pFirst, _Out_ INT32* pLast, _Out_ INT32* pItemCount) const;
+
     protected:
         // Virtual helper method to get the ItemsPerPage that can be overridden by derived classes.
         virtual _Check_return_ HRESULT GetItemsPerPageImpl(_In_ wf::Rect window, _Out_ DOUBLE* pItemsPerPage);

@@ -1509,8 +1509,39 @@ _Check_return_ HRESULT ListViewBaseItem::ChangeVisualStateWithContext(
     // new VisualState changing code for the new style
     IFC(ChangeVisualStateWithContextNewStyle(pContext, bUseTransitions));
 
+    IFC(ChangeNeighborVisualStates(pContext, bUseTransitions));
+
 Cleanup:
     return hr;
+}
+
+// Goes to the PreviousItemStates and NextItemStates visual states.
+_Check_return_ HRESULT ListViewBaseItem::ChangeNeighborVisualStates(
+    _In_ VisualStateManagerBatchContext *pContext,
+    _In_ bool bUseTransitions)
+{
+    ctl::ComPtr<ListViewBase> spListView = GetParentListView();
+    if (!spListView)
+    {
+        return S_OK;
+    }
+
+    INT index = -1;
+    IFC_RETURN(spListView->IndexFromContainer(this, &index));
+
+    const wchar_t* previousState = nullptr;
+    const wchar_t* nextState = nullptr;
+    IFC_RETURN(spListView->GetNeighborStates(index, &previousState, &nextState));
+
+    for (const wchar_t* state : { previousState, nextState })
+    {
+        if (state)
+        {
+            IFC_RETURN(pContext->GoToState(bUseTransitions, state, std::wcslen(state)));
+        }
+    }
+
+    return S_OK;
 }
 
 // Called when the NoSelectionHint VisualState's Storyboard completes.

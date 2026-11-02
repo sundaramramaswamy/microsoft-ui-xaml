@@ -335,9 +335,11 @@ namespace DirectUI
         _Check_return_ HRESULT OnItemsSourceChanged(
             _In_ IInspectable* pNewValue) override;
 
-        // goes through the visible and cached items and updates their IsSelected property and their visual state
+        // goes through the visible and cached items in [firstIndex, lastIndex] and updates their IsSelected property and their visual state
         _Check_return_ HRESULT UpdateVisibleAndCachedItemsSelectionAndVisualState(
-            _In_ bool updateIsSelected);
+            _In_ bool updateIsSelected,
+            _In_ int firstIndex = 0,
+            _In_ int lastIndex = INT_MAX);
 
     // SelectorItem's methods
     private:
@@ -494,6 +496,12 @@ namespace DirectUI
         // Calls SetItemIsSelected(FALSE) on the given item.
         _Check_return_ HRESULT UnselectIndex(
             _In_ UINT index) override;
+
+        void TrackAppliedSelectionIndex(_In_ UINT index);
+
+        // Bounds of the indexes passed to SelectIndex/UnselectIndex since the last EndChange.
+        int m_firstAppliedSelectionIndex{ INT_MAX };
+        int m_lastAppliedSelectionIndex{ -1 };
 
         // nullable int. keeps old selected index
         INT* m_pOldSelectedIndexToReport;

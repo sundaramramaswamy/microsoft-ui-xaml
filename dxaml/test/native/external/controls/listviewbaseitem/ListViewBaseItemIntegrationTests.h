@@ -209,6 +209,14 @@ namespace Microsoft { namespace UI { namespace Xaml { namespace Tests { namespac
             TEST_METHOD_PROPERTY(L"Description", L"Validates ListView item reordering with keyboard in LTR/RTL flows, and horizontal/vertical layouts.")
         END_TEST_METHOD()
 
+        BEGIN_TEST_METHOD(VerifyNeighborStates)
+            TEST_METHOD_PROPERTY(L"Description", L"Validates PreviousItemStates and NextItemStates track neighbor existence and selection.")
+        END_TEST_METHOD()
+
+        BEGIN_TEST_METHOD(VerifyNeighborStatesWithGroups)
+            TEST_METHOD_PROPERTY(L"Description", L"Validates PreviousItemStates and NextItemStates distinguish same-group and other-group neighbors.")
+        END_TEST_METHOD()
+
         //
         // Private Methods
         //

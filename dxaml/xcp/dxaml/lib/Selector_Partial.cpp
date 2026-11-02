@@ -1737,6 +1737,16 @@ _Check_return_
 
     IFC(pChanger->End(spUnselectedItems.Get(), spSelectedItems.Get(), canSelectMultiple));
 
+    // Neighbors of changed items may need new visual states, which read the now-committed selection.
+    if (m_firstAppliedSelectionIndex <= m_lastAppliedSelectionIndex)
+    {
+        const int first = m_firstAppliedSelectionIndex - 1;
+        const int last = m_lastAppliedSelectionIndex + 1;
+        m_firstAppliedSelectionIndex = INT_MAX;
+        m_lastAppliedSelectionIndex = -1;
+        IFC(UpdateVisibleAndCachedItemsSelectionAndVisualState(false /* updateIsSelected */, first, last));
+    }
+
     if (!m_pOldSelectedIndexToReport)
     {
         IFC(get_SelectedIndex(&currentSelectedIndex));
@@ -4043,6 +4053,7 @@ _Check_return_
     Selector::SelectIndex(
     _In_ UINT index)
 {
+    TrackAppliedSelectionIndex(index);
     RRETURN(SetItemIsSelected(index, TRUE));
 }
 
@@ -4052,7 +4063,15 @@ _Check_return_
     Selector::UnselectIndex(
     _In_ UINT index)
 {
+    TrackAppliedSelectionIndex(index);
     RRETURN(SetItemIsSelected(index, FALSE));
+}
+
+void Selector::TrackAppliedSelectionIndex(_In_ UINT index)
+{
+    const int i = static_cast<int>(index);
+    m_firstAppliedSelectionIndex = std::min(m_firstAppliedSelectionIndex, i);
+    m_lastAppliedSelectionIndex = std::max(m_lastAppliedSelectionIndex, i);
 }
 
 _Check_return_ HRESULT SelectorFactory::GetIsSelectionActiveImpl(_In_ xaml::IDependencyObject* element, _Out_ BOOLEAN* returnValue)
@@ -4603,11 +4622,13 @@ Cleanup:
     return hr;
 }
 
-// goes through the visible and cached items and updates their IsSelected property and their visual state
+// goes through the visible and cached items in [firstIndex, lastIndex] and updates their IsSelected property and their visual state
 _Check_return_
     HRESULT
     Selector::UpdateVisibleAndCachedItemsSelectionAndVisualState(
-    _In_ bool updateIsSelected)
+    _In_ bool updateIsSelected,
+    _In_ int firstIndex,
+    _In_ int lastIndex)
 {
     ctl::ComPtr<IPanel> spItemsPanelRoot;
 
@@ -4646,33 +4667,42 @@ _Check_return_
                         if (updateIsSelected && m_tpDataSourceAsSelectionInfo)
                         {
                             BOOLEAN isSelected = FALSE;
+                            BOOLEAN wasSelected = FALSE;
 
                             IFC_RETURN(m_tpDataSourceAsSelectionInfo->IsSelected(itemIndex, &isSelected));
+                            IFC_RETURN(pSelectorItem->get_IsSelected(&wasSelected));
 
-                            // this will call ChangeVisualState internally so there is no point calling the below ChangeVisualState
-                            IFC_RETURN(pSelectorItem->put_IsSelected(isSelected));
+                            if (isSelected != wasSelected)
+                            {
+                                // this will call ChangeVisualState internally so there is no point calling the below ChangeVisualState
+                                return pSelectorItem->put_IsSelected(isSelected);
+                            }
                         }
-                        else
-                        {
-                            IFC_RETURN(pSelectorItem->ChangeVisualState(TRUE /* bUseTransitions */));
-                        }
+
+                        // Unchanged items still refresh, since their state may depend on their neighbors' selection.
+                        IFC_RETURN(pSelectorItem->ChangeVisualState(TRUE /* bUseTransitions */));
                     }
                 }
 
                 return S_OK;
             };
 
-            for (int i = firstCachedIndex; i <= lastCachedIndex; ++i)
+            const int first = std::max({ 0, firstCachedIndex, firstIndex });
+            const int last = std::min(lastCachedIndex, lastIndex);
+
+            for (int i = first; i <= last; ++i)
             {
                 IFC_RETURN(updateVisualState(i));
             }
 
             for (int pinnedIndex : pinnedElementsIndices)
             {
+                const int index = static_cast<int>(pinnedIndex);
+
                 // Ignore containers for which we already updated the visual state.
-                if (pinnedIndex < firstCachedIndex || pinnedIndex > lastCachedIndex)
+                if ((index < first || index > last) && index >= firstIndex && index <= lastIndex)
                 {
-                    IFC_RETURN(updateVisualState(pinnedIndex));
+                    IFC_RETURN(updateVisualState(index));
                 }
             }
         }
