@@ -1550,6 +1550,12 @@ namespace DirectUI
         // and the total item count. First and last are -1 when itemIndex is outside the cached items.
         _Check_return_ HRESULT GetItemGroupBounds(_In_ INT32 itemIndex, _Out_ INT32* pFirst, _Out_ INT32* pLast, _Out_ INT32* pItemCount) const;
 
+        // Gets the header's index among the displayed groups, or -1 when unknown.
+        _Check_return_ HRESULT GetHeaderLayoutIndex(_In_ xaml::IDependencyObject* header, _Out_ INT32* pIndex);
+
+        // Updates the visual states of the realized headers, e.g. after the first displayed group changed.
+        _Check_return_ HRESULT UpdateHeaderVisualStates();
+
     protected:
         // Virtual helper method to get the ItemsPerPage that can be overridden by derived classes.
         virtual _Check_return_ HRESULT GetItemsPerPageImpl(_In_ wf::Rect window, _Out_ DOUBLE* pItemsPerPage);

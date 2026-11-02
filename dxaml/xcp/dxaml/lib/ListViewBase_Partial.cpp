@@ -2744,6 +2744,9 @@ ListViewBase::PrepareGroupContainer(
         ctl::ComPtr<IContentControl> spIContentControlItem;
         IFC(ctl::do_query_interface(spIContentControlItem, pContainer));
         IFC(spIContentControlItem.Cast<ListViewBaseHeaderItem>()->SetParent(this));
+
+        // A recycled header keeps its template; refresh its group position.
+        IFC(Control::UpdateVisualState(spIContentControlItem.Cast<ListViewBaseHeaderItem>(), false /* useTransitions */));
     }
 
 Cleanup:

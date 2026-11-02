@@ -323,6 +323,14 @@ _Check_return_ HRESULT ListViewBase::OnItemsChanged(
         // The items around an insertion or removal have a new neighbor.
         const int changedIndex = static_cast<int>(index);
         IFC(UpdateVisibleAndCachedItemsSelectionAndVisualState(false /* updateIsSelected */, changedIndex - 1, changedIndex + 1));
+
+        // A group that became empty or non-empty may change the first displayed group.
+        ctl::ComPtr<IPanel> panel;
+        IFC(get_ItemsPanelRoot(&panel));
+        if (const auto modernPanel = panel.AsOrNull<IModernCollectionBasePanel>())
+        {
+            IFC(modernPanel.Cast<ModernCollectionBasePanel>()->UpdateHeaderVisualStates());
+        }
     }
 
     if (allowCancelDrag)

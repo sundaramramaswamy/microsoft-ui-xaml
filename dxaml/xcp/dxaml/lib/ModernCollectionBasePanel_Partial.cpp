@@ -3867,6 +3867,41 @@ _Check_return_ HRESULT ModernCollectionBasePanel::GetItemGroupBounds(
     return S_OK;
 }
 
+_Check_return_ HRESULT ModernCollectionBasePanel::GetHeaderLayoutIndex(
+    _In_ xaml::IDependencyObject* header,
+    _Out_ INT32* pIndex)
+{
+    *pIndex = -1;
+
+    // Grouping isn't cached while the metrics aren't.
+    if (m_cacheManager.IsGrouping())
+    {
+        IFC_RETURN(m_containerManager.IGHM_IndexFromHeader(header, TRUE /* excludeHiddenEmptyGroups */, pIndex));
+    }
+
+    return S_OK;
+}
+
+_Check_return_ HRESULT ModernCollectionBasePanel::UpdateHeaderVisualStates()
+{
+    if (!m_cacheManager.IsGrouping())
+    {
+        return S_OK;
+    }
+
+    for (INT32 validHeaderIndex = 0; validHeaderIndex < m_containerManager.GetValidHeaderCount(); ++validHeaderIndex)
+    {
+        ctl::ComPtr<IUIElement> header;
+        IFC_RETURN(m_containerManager.GetHeaderAtValidIndex(validHeaderIndex, &header));
+        if (const auto control = header.AsOrNull<xaml_controls::IControl>())
+        {
+            IFC_RETURN(Control::UpdateVisualState(control.Cast<Control>(), false /* useTransitions */));
+        }
+    }
+
+    return S_OK;
+}
+
 _Check_return_ HRESULT ModernCollectionBasePanel::OnPropertyChanged2(_In_ const PropertyChangedParams& args)
 {
     IFC_RETURN(ModernCollectionBasePanelGenerated::OnPropertyChanged2(args));

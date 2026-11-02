@@ -308,6 +308,26 @@ _Check_return_ HRESULT ListViewBaseHeaderItem::ChangeVisualState(
         IFC(GoToState(useTransitions, L"Unfocused", &ignored));
     }
 
+    // GroupPosition state group
+    {
+        ctl::ComPtr<xaml_controls::IListViewBase> parent;
+        IFC(GetParent(&parent));
+        if (parent)
+        {
+            ctl::ComPtr<IPanel> panel;
+            IFC(parent.Cast<ListViewBase>()->get_ItemsPanelRoot(&panel));
+            if (const auto modernPanel = panel.AsOrNull<IModernCollectionBasePanel>())
+            {
+                INT32 groupIndex = -1;
+                IFC(modernPanel.Cast<ModernCollectionBasePanel>()->GetHeaderLayoutIndex(this, &groupIndex));
+                if (groupIndex >= 0)
+                {
+                    IFC(GoToState(useTransitions, groupIndex == 0 ? L"FirstGroup" : L"SubsequentGroup", &ignored));
+                }
+            }
+        }
+    }
+
 Cleanup:
     RRETURN(hr);
 }

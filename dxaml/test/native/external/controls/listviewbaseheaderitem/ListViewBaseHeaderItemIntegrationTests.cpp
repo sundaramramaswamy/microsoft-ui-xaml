@@ -278,6 +278,107 @@ namespace Microsoft { namespace UI { namespace Xaml { namespace Tests { namespac
         TestServices::InputHelper->MoveMouse(::Windows::Foundation::Point(0, 0));
     }
 
+    // Verifies the GroupPositionStates of the header of the group containing the item.
+    static void VerifyHeaderGroupPositionState(xaml_controls::ListViewBase^ list, int itemIndex, const wchar_t* expectedState)
+    {
+        LOG_OUTPUT(L"Header of item %d: expecting %s.", itemIndex, expectedState);
+
+        auto item = safe_cast<xaml::DependencyObject^>(list->ContainerFromIndex(itemIndex));
+        auto header = safe_cast<xaml::FrameworkElement^>(list->GroupHeaderContainerFromItemContainer(item));
+        auto root = safe_cast<xaml::FrameworkElement^>(xaml_media::VisualTreeHelper::GetChild(header, 0));
+        auto groups = VisualStateManager::GetVisualStateGroups(root);
+
+        VERIFY_ARE_EQUAL(Platform::StringReference(expectedState), groups->GetAt(0)->CurrentState->Name);
+    }
+
+    void IntegrationTests::VerifyGroupPositionStates()
+    {
+        TestCleanupWrapper cleanup;
+        xaml_controls::ListView^ list = nullptr;
+        Platform::Collections::Vector<Platform::Object^>^ groups = nullptr;
+
+        RunOnUIThread([&]()
+        {
+            list = safe_cast<xaml_controls::ListView^>(xaml_markup::XamlReader::Load(
+                LR"(<ListView xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                        xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+                        Width='200' Height='400' VerticalAlignment='Top'>
+                    <ListView.GroupStyle>
+                        <GroupStyle HidesIfEmpty='True'>
+                            <GroupStyle.HeaderContainerStyle>
+                                <Style TargetType='ListViewHeaderItem'>
+                                    <Setter Property='Template'>
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType='ListViewHeaderItem'>
+                                                <Border Height='20'>
+                                                    <VisualStateManager.VisualStateGroups>
+                                                        <VisualStateGroup x:Name='GroupPositionStates'>
+                                                            <VisualState x:Name='FirstGroup'/>
+                                                            <VisualState x:Name='SubsequentGroup'/>
+                                                        </VisualStateGroup>
+                                                    </VisualStateManager.VisualStateGroups>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </GroupStyle.HeaderContainerStyle>
+                        </GroupStyle>
+                    </ListView.GroupStyle>
+                </ListView>)"));
+
+            // Groups [], [a], [b]; the empty group's header is hidden.
+            groups = ref new Platform::Collections::Vector<Platform::Object^>();
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>());
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>({ L"a" }));
+            groups->Append(ref new Platform::Collections::Vector<Platform::String^>({ L"b" }));
+
+            auto cvs = ref new xaml_data::CollectionViewSource();
+            cvs->IsSourceGrouped = true;
+            cvs->Source = groups;
+            list->ItemsSource = cvs->View;
+            TestServices::WindowHelper->WindowContent = list;
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"The first non-empty group is first.");
+        RunOnUIThread([&]()
+        {
+            VerifyHeaderGroupPositionState(list, 0, L"FirstGroup");
+            VerifyHeaderGroupPositionState(list, 1, L"SubsequentGroup");
+
+            safe_cast<Platform::Collections::Vector<Platform::String^>^>(groups->GetAt(0))->Append(L"x");
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Filling the empty group makes it first.");
+        RunOnUIThread([&]()
+        {
+            VerifyHeaderGroupPositionState(list, 0, L"FirstGroup");
+            VerifyHeaderGroupPositionState(list, 1, L"SubsequentGroup");
+
+            groups->RemoveAt(0);
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Removing the first group makes the next one first.");
+        RunOnUIThread([&]()
+        {
+            VerifyHeaderGroupPositionState(list, 0, L"FirstGroup");
+            VerifyHeaderGroupPositionState(list, 1, L"SubsequentGroup");
+
+            groups->InsertAt(0, ref new Platform::Collections::Vector<Platform::String^>({ L"y" }));
+        });
+        TestServices::WindowHelper->WaitForIdle();
+
+        LOG_OUTPUT(L"Inserting a group before the first one makes it subsequent.");
+        RunOnUIThread([&]()
+        {
+            VerifyHeaderGroupPositionState(list, 0, L"FirstGroup");
+            VerifyHeaderGroupPositionState(list, 1, L"SubsequentGroup");
+        });
+    }
+
     //
     // Private Methods
     //

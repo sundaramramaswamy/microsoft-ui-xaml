@@ -1259,6 +1259,7 @@ _Check_return_ HRESULT ModernCollectionBasePanel::NotifyOfGroupsChanged(
     HRESULT hr = S_OK;
     wfc::CollectionChange action;
     UINT nIndex = 0;
+    bool updateHeaderVisualStates = false;
 
     if (m_layoutInProgress)
     {
@@ -1324,8 +1325,18 @@ _Check_return_ HRESULT ModernCollectionBasePanel::NotifyOfGroupsChanged(
 
     IFC(OnCollectionChangeProcessed());
 
+    // The first displayed group may have changed.
+    updateHeaderVisualStates = (action == wfc::CollectionChange_ItemInserted || action == wfc::CollectionChange_ItemRemoved);
+
 Cleanup:
     m_inCollectionChange = false;
+
+    if (SUCCEEDED(hr) && updateHeaderVisualStates)
+    {
+        // Outside the collection change, as visual state changes can run app code.
+        hr = UpdateHeaderVisualStates();
+    }
+
     RRETURN(hr);
 }
 

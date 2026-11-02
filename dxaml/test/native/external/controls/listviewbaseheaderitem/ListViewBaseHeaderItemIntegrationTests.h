@@ -57,6 +57,10 @@ namespace Microsoft { namespace UI { namespace Xaml { namespace Tests { namespac
             TEST_METHOD_PROPERTY(L"Ignore", L"True")
         END_TEST_METHOD()
 
+        BEGIN_TEST_METHOD(VerifyGroupPositionStates)
+            TEST_METHOD_PROPERTY(L"Description", L"Validates that headers go to FirstGroup or SubsequentGroup as groups and items change.")
+        END_TEST_METHOD()
+
     };
 
 } } } } } }
